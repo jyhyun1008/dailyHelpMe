@@ -1,9 +1,0 @@
-node_modules
-.next
-generated
-data
-.env
-.env.local
-*.log
-.git
-.DS_Store

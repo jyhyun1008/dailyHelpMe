@@ -5,9 +5,16 @@ out/
 build/
 .env
 .env.local
-data/*.db
-data/*.db-journal
-data/*.db.backup-*
-scripts/migrate-to-multiuser/dump.json
+**/data/*.db*
+**/data/*.sqlite*
+**/scripts/migrate-to-multiuser/dump.json
+*.tsbuildinfo
 *.log
 .DS_Store
+.venv-pet/
+__pycache__/
+*.pyc
+dist/
+
+# Private backups may contain old databases and environment secrets.
+.local-backups/

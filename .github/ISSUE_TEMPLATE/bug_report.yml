@@ -1,0 +1,31 @@
+name: 오류 제보
+description: 날도와줘 사용 중 생긴 문제를 알려주세요.
+body:
+  - type: markdown
+    attributes:
+      value: 대화·일기·연결 코드·인증 정보는 올리지 말아주세요.
+  - type: input
+    id: version
+    attributes:
+      label: 앱 버전
+      placeholder: 0.1.0-beta.1
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: macOS 버전과 CPU
+      placeholder: macOS 26, Apple M1
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 재현 순서와 기대한 동작
+    validations:
+      required: true
+  - type: textarea
+    id: error
+    attributes:
+      label: 실제 동작과 오류 문구
+      description: 개인 정보가 보이지 않도록 가린 뒤 첨부해주세요.
