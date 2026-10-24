@@ -1,6 +1,8 @@
 # 날도와줘 · DailyHelpMe!! 설치
 
-첫 배포는 `0.1.0-beta.1`입니다. 배포 파일 이름의 CPU(arm64 또는 x86_64)와 함께 제공되는 `release.json`의 `minimum_macos`를 확인하세요. 현재 개발 맥에서 만든 파일은 Apple Silicon 전용이며 macOS 26 이상이 필요합니다. Intel·구형 macOS에서 확인한 빌드는 아직 없습니다.
+[앱 화면 미리 보기](SCREENS.md)에서 데스크톱 펫과 서랍, 모바일 화면을 확인할 수 있습니다.
+
+현재 배포 버전은 `0.1.0-beta.2`입니다. 배포 파일 이름의 CPU(arm64 또는 x86_64)와 함께 제공되는 `release.json`의 `minimum_macos`를 확인하세요. 현재 개발 맥에서 만든 파일은 Apple Silicon 전용이며 macOS 26 이상이 필요합니다. Intel·구형 macOS에서 확인한 빌드는 아직 없습니다.
 
 ## 설치와 첫 실행
 

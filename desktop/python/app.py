@@ -57,6 +57,9 @@ class Pet(QWidget):
         self.bongo_frames = load_frames()
         self.bongo = not self.custom
         self.typing_frame = 0
+        self.custom_frames = []
+        self.reply_typing = False
+        self.frame_changed_at = float("-inf")
         self.last_tap = float("-inf")
         self.image = QPixmap(custom) if custom else bongo_preview(self.bongo_frames)
         self.phase, self.offset = 0.0, 0
@@ -93,7 +96,7 @@ class Pet(QWidget):
 
     def update_mask(self):
         # Restrict input to the visible pet and bubble; empty surroundings pass through.
-        region = QRect(35, 112, 250, 155) if self.bongo else self.avatar
+        region = QRect(20, 97, 280, 170) if self.bongo else self.avatar
         shape = QRegion(region, QRegion.RegionType.Rectangle)
         if self.bubble.isVisible() or not self.isVisible():
             shape |= QRegion(self.bubble.geometry())
@@ -110,14 +113,31 @@ class Pet(QWidget):
         self.update_mask()
 
     def on_key_activity(self):
-        if self.bongo and not self.settings.value("reduce_motion", False, type=bool):
+        if (self.bongo or self.custom_frames) and not self.settings.value("reduce_motion", False, type=bool):
             self.last_tap = time.monotonic()
-            self.typing_frame = 2 if self.typing_frame == 1 else 1
+            if not self.reply_typing:
+                self.advance_typing_frame(self.last_tap)
+
+    def advance_typing_frame(self, now):
+        self.typing_frame = 2 if self.typing_frame == 1 else 1
+        self.frame_changed_at = now
+        self.update()
+
+    def set_reply_typing(self, active):
+        self.reply_typing = active
+        if active and (self.bongo or self.custom_frames) and not self.settings.value("reduce_motion", False, type=bool):
+            self.advance_typing_frame(time.monotonic())
+        elif not active:
+            self.typing_frame = 0
             self.update()
 
     def animate(self):
         self.keyboard.poll()
-        if self.typing_frame and (time.monotonic() - self.last_tap > .18 or self.settings.value("reduce_motion", False, type=bool)):
+        now = time.monotonic()
+        reduced = self.settings.value("reduce_motion", False, type=bool)
+        if self.reply_typing and (self.bongo or self.custom_frames) and not reduced and now - self.frame_changed_at >= .24:
+            self.advance_typing_frame(now)
+        if self.typing_frame and (reduced or not self.reply_typing and now - self.last_tap > .18):
             self.typing_frame = 0
             self.update()
         if self.isVisible() and not self.settings.value("reduce_motion", False, type=bool):
@@ -128,8 +148,12 @@ class Pet(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        elapsed = time.monotonic() - self.frame_changed_at
+        squash = 0.0
+        if not self.settings.value("reduce_motion", False, type=bool) and elapsed < .4:
+            squash = .12 * math.exp(-10 * elapsed) * math.cos(27 * elapsed)
         if self.bongo:
-            draw_bongo(painter, QRect(35, 112, 250, 150), self.bongo_frames, self.typing_frame)
+            draw_bongo(painter, QRect(35, 112, 250, 150), self.bongo_frames, self.typing_frame, squash)
             return
         rect = self.avatar.adjusted(5, 6 + self.offset, -5, -6 + self.offset)
         if self.image.isNull():
@@ -137,7 +161,12 @@ class Pet(QWidget):
             painter.drawEllipse(rect)
             painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, current()["name"])
         else:
-            scaled = self.image.scaled(rect.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            image = self.custom_frames[self.typing_frame] if self.custom_frames else self.image
+            if self.custom_frames:
+                painter.translate(rect.center().x(), rect.bottom())
+                painter.scale(1 + squash, 1 - squash)
+                painter.translate(-rect.center().x(), -rect.bottom())
+            scaled = image.scaled(rect.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
             x = rect.x() + (rect.width() - scaled.width()) // 2
             y = rect.y() + (rect.height() - scaled.height()) // 2
             painter.drawPixmap(x, y, scaled)
@@ -210,6 +239,19 @@ class Companion(QObject):
         self.pet.bongo = not self.pet.custom
         self.pet.typing_frame = 0
         self.pet.image = pixmap if raw and not pixmap.isNull() else QPixmap(custom) if custom else bongo_preview(self.pet.bongo_frames)
+        self.pet.custom_frames = []
+        if raw and not pixmap.isNull():
+            frames = [pixmap]
+            has_motion = False
+            for key in ("avatar_left_png", "avatar_right_png"):
+                frame = QPixmap()
+                encoded = self.store.get(key)
+                if encoded:
+                    frame.loadFromData(base64.b64decode(encoded))
+                has_motion |= not frame.isNull()
+                frames.append(frame if not frame.isNull() else pixmap)
+            if has_motion:
+                self.pet.custom_frames = frames
         self.pet.keyboard.set_enabled(self.store.get("keyboard_reaction", "1") == "1")
         self.pet.update_mask()
         self.pet.update()
@@ -220,13 +262,21 @@ class Companion(QObject):
         self.pet.menu.actions()[1].setText(settings["name"] + "과(와) 대화")
         self.pet.menu.update()
 
-    def save_appearance(self, name, color, avatar=None):
+    def save_appearance(self, name, color, avatar=None, avatar_frame="idle"):
         name, color = validate(name, color)
+        keys = {"idle": "avatar_png", "left": "avatar_left_png", "right": "avatar_right_png"}
+        if avatar_frame not in keys:
+            raise ValueError("이미지 상태를 확인해주세요.")
+        if avatar is not None and avatar_frame != "idle" and not self.store.get("avatar_png"):
+            raise ValueError("정지 이미지를 먼저 등록해주세요.")
         with self.store.db:
             self.store._set("companion_name", name)
             self.store._set("theme_color", color)
             if avatar is not None:
-                self.store._set("avatar_png", avatar)
+                self.store._set(keys[avatar_frame], avatar)
+                if avatar_frame == "idle":
+                    self.store._set("avatar_left_png", "")
+                    self.store._set("avatar_right_png", "")
         self.apply_appearance()
 
     def application_state_changed(self, state):
@@ -356,6 +406,7 @@ class Companion(QObject):
         self.worker.succeeded.connect(self.receive)
         self.worker.failed.connect(self.failure)
         self.worker.finished.connect(self.finished)
+        self.pet.set_reply_typing(True)
         self.worker.start()
 
     def generate_diary_draft(self, day):
@@ -373,6 +424,7 @@ class Companion(QObject):
         self.worker.succeeded.connect(lambda result: self.receive_diary_draft(day, original, result))
         self.worker.failed.connect(self.diary_draft_failure)
         self.worker.finished.connect(self.finished)
+        self.pet.set_reply_typing(True)
         self.worker.start()
 
     def receive_diary_draft(self, day, original, result):
@@ -426,6 +478,7 @@ class Companion(QObject):
         self.pet.say("연결을 확인해주세요. 서랍에 자세히 적어뒀어요.")
 
     def finished(self):
+        self.pet.set_reply_typing(False)
         self.panel.set_busy(False)
         self.panel.retry_button.setVisible(self.retry_available)
         if self.panel.tabs.currentIndex() == 1:

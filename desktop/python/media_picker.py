@@ -2,8 +2,8 @@
 from pathlib import Path
 from PySide6.QtCore import QEasingCurve, QSize, QVariantAnimation, Qt
 from PySide6.QtGui import QIcon, QPixmap
-from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QTabWidget, QWidget, QScrollArea, QPushButton, QLabel, QLineEdit, QComboBox, QFileDialog
-from chat_media import normalize_image
+from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QTabWidget, QWidget, QScrollArea, QPushButton, QLabel, QLineEdit, QComboBox, QFileDialog, QSizePolicy
+from chat_media import normalize_image, artwork_movie
 from appearance import style
 
 
@@ -12,6 +12,7 @@ class ArtworkButton(QPushButton):
         super().__init__()
         image = QPixmap();image.loadFromData(png)
         self.setIcon(QIcon(image))
+        self.movie = artwork_movie(png, self, lambda frame: self.setIcon(QIcon(frame)))
         self.base_size = 34 if asset['kind']=='emoji' else 54
         self.setIconSize(QSize(self.base_size,self.base_size))
         self.setFixedSize(72,72)
@@ -44,6 +45,8 @@ class MediaPicker(QDialog):
         self.companion = companion
         self.store = companion.store
         self.setWindowTitle('이모지 · 스티커')
+        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+        self.setWindowModality(Qt.WindowModality.NonModal)
         self.setStyleSheet(style(parent.styleSheet()+"""
 QDialog { background: #fffafd; }
 QTabWidget::pane { border: 0; background: #fffafd; }
@@ -53,7 +56,8 @@ QScrollArea { border: 0; background: #fffafd; }
 QScrollArea > QWidget > QWidget { background: #fffafd; }
 """))
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
-        self.resize(360,460)
+        self.resize(390,460)
+        self.setMinimumWidth(340)
         layout = QVBoxLayout(self)
         self.tabs = QTabWidget()
         layout.addWidget(self.tabs,1)
@@ -71,6 +75,33 @@ QScrollArea > QWidget > QWidget { background: #fffafd; }
         layout.addWidget(self.status)
         self.refresh()
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        parent = self.parentWidget()
+        anchor = parent.frameGeometry()
+        bounds = parent.screen().availableGeometry()
+        frame = self.frameGeometry()
+        gap = 12
+        right = anchor.right() + gap
+        left = anchor.left() - frame.width() - gap
+        x = right if right + frame.width() <= bounds.right() + 1 else left
+        x = max(bounds.left(), min(x, bounds.right() - frame.width() + 1))
+        y = max(bounds.top(), min(anchor.top(), bounds.bottom() - frame.height() + 1))
+        self.move(self.pos() + type(self.pos())(x - frame.x(), y - frame.y()))
+        self.raise_()
+        self.activateWindow()
+
+    def rename(self, key, field):
+        try:
+            self.store.rename_media(key, field.text())
+        except ValueError as error:
+            self.status.setText(str(error))
+            current = next((asset for asset in self.store.media_assets() if asset['id'] == key), None)
+            if current: field.setText(current['name'])
+            return
+        field.setText(field.text().strip())
+        self.status.setText('이름을 저장했어요.')
+
     def refresh(self):
         selected = self.tabs.currentIndex()
         while self.tabs.count():
@@ -78,16 +109,22 @@ QScrollArea > QWidget > QWidget { background: #fffafd; }
         assets = self.store.media_assets()
         for kind,title in [('emoji','이모지'),('sticker','스티커')]:
             scroll=QScrollArea();scroll.setWidgetResizable(True)
+            scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
             body=QWidget();grid=QGridLayout(body);grid.setAlignment(Qt.AlignmentFlag.AlignTop)
             entries=[a for a in assets if a['kind']==kind]
             for col in range(3):grid.setColumnStretch(col,1)
             if not entries:
                 grid.addWidget(QLabel('아래에서 나만의 이미지를 등록해보세요.'),0,0,1,3)
             for index,asset in enumerate(entries):
-                tile=QWidget();column=QVBoxLayout(tile);column.setContentsMargins(2,2,2,2)
+                tile=QWidget();tile.setMinimumWidth(0);tile.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Preferred);column=QVBoxLayout(tile);column.setContentsMargins(2,2,2,2)
                 image=ArtworkButton(asset,self.store.media_image(asset['id']),lambda checked=False,a=asset:self.select(a))
                 column.addWidget(image,0,Qt.AlignmentFlag.AlignCenter)
-                name=QLabel(asset['name']);name.setWordWrap(True);name.setAlignment(Qt.AlignmentFlag.AlignCenter);column.addWidget(name)
+                name=QLineEdit(asset['name']);name.setMaxLength(40)
+                name.setMinimumWidth(0);name.setSizePolicy(QSizePolicy.Policy.Ignored,QSizePolicy.Policy.Fixed)
+                name.setAlignment(Qt.AlignmentFlag.AlignCenter);name.setAccessibleName('이름 수정')
+                name.setToolTip('이름을 수정하고 Enter를 누르면 저장해요.')
+                name.editingFinished.connect(lambda key=asset['id'],field=name:self.rename(key,field))
+                column.addWidget(name)
                 remove=QPushButton('삭제');remove.setAccessibleName(asset['name']+' 선택 목록에서 삭제')
                 remove.clicked.connect(lambda checked=False,key=asset['id']:self.remove(key))
                 column.addWidget(remove)
@@ -111,7 +148,7 @@ QScrollArea > QWidget > QWidget { background: #fffafd; }
         self.accept()
 
     def choose(self):
-        path,_=QFileDialog.getOpenFileName(self,'이모지 · 스티커 이미지','','이미지 (*.png *.jpg *.jpeg *.webp)')
+        path,_=QFileDialog.getOpenFileName(self,'이모지 · 스티커 이미지','','이미지 (*.png *.jpg *.jpeg *.webp *.gif)')
         if not path:return
         try:
             if Path(path).stat().st_size>4*1024*1024:raise ValueError('이미지는 4MB 이하로 선택해주세요.')

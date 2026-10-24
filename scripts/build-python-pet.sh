@@ -58,4 +58,15 @@ PYMOVE
 # Build directly into the canonical location so removed assets cannot linger in a merged bundle.
 touch "$PWD/build/날도와줘.app"
 codesign --verify --deep --strict "$PWD/build/날도와줘.app"
+# Finder users also launch the staging copy; never leave it on an older build.
+.venv-pet/bin/python - <<'PYSTAGING'
+from pathlib import Path
+import shutil
+import subprocess
+staging = Path('build/release-staging')
+staging.mkdir(exist_ok=True)
+target = staging / '날도와줘.app'
+if target.exists(): shutil.rmtree(target)
+subprocess.run(['ditto', 'build/날도와줘.app', str(target)], check=True)
+PYSTAGING
 printf 'Built: %s/build/날도와줘.app\n' "$PWD"

@@ -2,9 +2,21 @@
 
 맥 화면 구석에 사는 **데스크톱 펫 비서**입니다. 펫(기본: 봉고캣)과 대화하면 일정·할 일·루틴을 기억해 두었다가 알려주고, 일기도 함께 써요. ChatGPT 계정의 Codex로 답장하며, 데이터는 모두 내 맥에 저장됩니다.
 
-- 현재 버전: **0.1.0-beta.1** (미공증 베타, Apple Silicon · macOS 26 이상)
+- 현재 버전: **0.1.0-beta.2** (미공증 베타, Apple Silicon · macOS 26 이상)
 - 문서: [설치 안내](docs/INSTALL.md) · [개인정보 안내](docs/PRIVACY.md) · [배포 절차](docs/RELEASING.md) · [변경 기록](CHANGELOG.md)
 - 라이선스: [MIT](LICENSE) · [외부 구성 요소 고지](THIRD_PARTY_NOTICES.md)
+
+<p align="center">
+  <img src="docs/images/pet-bubble-short.png" width="320" alt="말풍선으로 인사하는 봉고캣 펫">
+</p>
+
+<p align="center">
+  <img src="docs/images/drawer-created-item-cards.png" width="260" alt="AI 답장 아래에 생성된 일정 상세 보기 카드">
+  <img src="docs/images/drawer-week.png" width="260" alt="달력 탭의 주간 시간표">
+  <img src="docs/images/drawer-diary-ai.png" width="260" alt="대화를 바탕으로 만든 AI 일기 초안">
+</p>
+
+대화로 일정을 만들고, 주간 시간표로 확인하고, 하루를 일기로 남겨요. [화면 더 보기](docs/SCREENS.md)에서 꾸미기와 모바일 화면도 볼 수 있습니다.
 
 ---
 
@@ -61,7 +73,7 @@ bash scripts/run-python-pet.sh # 실행 (= npm run pet:start)
 
 ### 이모지 · 스티커
 
-대화 입력창 옆 **☺**에서 이미지(PNG·JPG·WebP, 4MB 이하)를 이름과 함께 등록해 쓸 수 있어요.
+대화 입력창 옆 **☺**에서 이미지(PNG·JPG·WebP·GIF, 4MB 이하)를 이름과 함께 등록해 쓸 수 있어요.
 
 - **이모지**: 글 사이에 넣어 함께 전송 (AI에는 이름만 전달)
 - **스티커**: 단독 메시지로 전송, **AI를 호출하지 않음**
@@ -74,13 +86,20 @@ bash scripts/run-python-pet.sh # 실행 (= npm run pet:start)
 
 **설정 → 이름 · 테마 · 이미지**에서 펫 이름(30자), 테마색, 펫 이미지(PNG·JPG·WEBP)를 바꿀 수 있어요. *꾸미기 전체 기본값*으로 봉고캣으로 돌아갑니다.
 
-봉고캣은 키보드를 칠 때 같이 타이핑해요. 키 **횟수 변화만** 확인하며 어떤 키를 눌렀는지는 읽지 않아요. **설정 → 키보드 입력에 봉고캣 반응**에서 끌 수 있습니다.
+봉고캣은 키보드를 칠 때 같이 타이핑해요. 키 **횟수 변화만** 확인하며 어떤 키를 눌렀는지는 읽지 않아요. **설정 → 키보드 입력에 펫 반응**에서 끌 수 있습니다.
+
+AI가 답장이나 일기 초안을 작성하는 동안에도 봉고캣이 양손을 번갈아 움직여요. 손 이미지가 바뀔 때 고양이만 납작해졌다가 길쭉하게 튀며, 키보드는 제자리에 있어요. **움직임 줄이기**를 켜면 이 모션도 멈춥니다. 다른 캐릭터도 **정지 → 왼손 내림 → 오른손 내림** 이미지 3장을 등록하면 같은 손 교대·탄성 모션으로 움직여요. 같은 캔버스 크기와 위치의 투명 PNG를 권장합니다. 미등록 손 이미지는 정지 이미지로 대신하고, 정지 이미지를 교체하면 손 이미지가 초기화돼요. 이미지에 키보드를 포함하면 키보드도 함께 변형됩니다.
 
 ---
 
 ## 아이폰 · 아이패드에서 쓰기 (Tailscale)
 
 맥 앱과 **같은 데이터**(대화·일정·일기·북마크)를 모바일 브라우저에서 쓸 수 있어요. 답장은 맥의 Codex가 만듭니다.
+
+<p align="center">
+  <img src="docs/images/mobile-subtasks.png" width="260" alt="모바일에서 일정의 작은 단계 확인하기">
+  <img src="docs/images/mobile-diary-ai.png" width="260" alt="모바일에서 AI 일기 초안 확인하기">
+</p>
 
 1. 맥 앱 **설정 → 모바일 접속 허용**을 켜요. (연결 코드가 표시됨)
 2. 맥 터미널에서:

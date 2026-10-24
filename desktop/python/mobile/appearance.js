@@ -46,7 +46,7 @@ function renderAppearance() {
   themeLink.href = '/api/theme.css?v=' + encodeURIComponent(settings.color);
 }
 const renderBeforeAppearance = render;
-render = function() { renderBeforeAppearance(); renderAppearance(); };
+render = function(...args) { renderBeforeAppearance(...args); renderAppearance(); };
 // Messages can re-render independently while the appearance stays the same.
 const messagesBeforeAppearance = renderMessages;
 renderMessages = function(...args) {

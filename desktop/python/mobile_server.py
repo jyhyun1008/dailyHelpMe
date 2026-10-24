@@ -235,7 +235,8 @@ class MobileService(QObject):
                 image = self.store.media_image(path.rsplit("/",1)[-1])
             except ValueError:
                 return 404, {"error":"이미지를 찾을 수 없어요."}, {}
-            return 200, image, {"Content-Type":"image/png"}
+            from chat_media import image_content_type
+            return 200, image, {"Content-Type":image_content_type(image)}
         if method == "POST" and path == "/api/media/add":
             from chat_media import normalize_image
             try:
@@ -327,12 +328,16 @@ class MobileService(QObject):
         if method == "GET" and path == "/api/state":
             from calendar_data import today_items
             from urllib.parse import parse_qs
-            limit = min(1000, max(50, int(parse_qs(url.query).get("limit", [100])[0])))
+            query = parse_qs(url.query)
+            limit = min(50, max(1, int(query.get("limit", [50])[0])))
+            before = int(query["before"][0]) if "before" in query else None
+            messages = self.store.history(limit + 1, before=before)
+            has_more = len(messages) > limit
             from appearance import read_appearance
-            return 200, {"media": self.store.media_assets(include_archived=True), "webSearchEnabled": self.store.get("web_search_enabled", "1") == "1", "appearance": read_appearance(self.store), "now": now_kst().isoformat(), "messages": self.store.history(limit), "bookmarks": self.store.bookmarks(),
+            return 200, {"media": self.store.media_assets(include_archived=True), "webSearchEnabled": self.store.get("web_search_enabled", "1") == "1", "appearance": read_appearance(self.store), "now": now_kst().isoformat(), "messages": messages[-limit:], "hasMoreMessages": has_more, "bookmarks": self.store.bookmarks(),
                          "items": self.store.items(), "todayItems": today_items(self.store.items(), now_kst().date().isoformat()), "profile": self.store.get("profile"),
                          "diaryDraft": ({k: self.companion.diary_draft[k] for k in ("date", "content")} if self.companion.diary_draft else None),
-                         "diaryDraftStatus": self.companion.diary_draft_status, "busy": self.companion.busy, "error": self.companion.mobile_reply_error, "pushError": self.last_error}, {}
+                         "diaryDraftStatus": self.companion.diary_draft_status, "busy": self.companion.busy, "error": self.companion.mobile_reply_error, "pushSubscribed": bool(self.store.db.execute("SELECT 1 FROM mobile_push WHERE session=?", (session,)).fetchone()), "pushError": self.last_error}, {}
         if method == "POST" and path == "/api/chat":
             text = data.get("text")
             if not isinstance(text, str) or not text.strip() or len(text) > 8000:
@@ -420,13 +425,17 @@ class MobileService(QObject):
         companion_name = self.store.get("companion_name", "봉고캣")
         def send():
             from pywebpush import webpush, WebPushException
+            from py_vapid import Vapid
+            # py_vapid rejects valid HTTPS subjects containing paths in strict mode.
+            signer = Vapid.from_string(private)
+            signer.conf["no-strict"] = True
             expired = []
             failed = 0
             for row in subscriptions:
                 try:
                     webpush(subscription_info=json.loads(row["subscription"]),
                             data=json.dumps({"title": companion_name, "body": "\n".join(texts)[:600], "url": "/"}, ensure_ascii=False),
-                            vapid_private_key=private, vapid_claims={"sub": "mailto:doa@localhost.local"}, ttl=3600, timeout=10)
+                            vapid_private_key=signer, vapid_claims={"sub": "https://github.com/jyhyun1008/dailyHelpMe"}, ttl=3600, timeout=10)
                 except WebPushException as error:
                     status = getattr(getattr(error, "response", None), "status_code", None)
                     if status in (404, 410):

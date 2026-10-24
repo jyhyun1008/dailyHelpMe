@@ -12,7 +12,7 @@ def load_frames():
     return [QPixmap(str(ASSETS / name)) for name in ('idle.png', 'typing-left.png', 'typing-right.png')]
 
 
-def draw_bongo(painter, rect, frames, frame=0):
+def draw_bongo(painter, rect, frames, frame=0, squash=0.0):
     painter.save()
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
@@ -32,6 +32,10 @@ def draw_bongo(painter, rect, frames, frame=0):
             painter.drawRoundedRect(QRectF(31+column*16, 104+row*10, 13, 7), 1.5, 1.5)
     painter.setBrush(themed_color('#f8edf3'))
     painter.drawRoundedRect(QRectF(86, 134, 86, 6), 1.5, 1.5)
+    # Bounce around the paws; the keyboard stays planted on the desk.
+    painter.translate(125, 100)
+    painter.scale(1 + squash, 1 - squash)
+    painter.translate(-125, -100)
     painter.drawPixmap(QRectF(0, 0, 250, 150), frames[frame], QRectF(frames[frame].rect()))
     painter.restore()
 

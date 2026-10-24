@@ -96,8 +96,9 @@ class Store:
         with self.db:
             self._message(role, content, now or now_kst())
 
-    def history(self, limit=80):
-        rows = self.db.execute("SELECT * FROM messages ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+    def history(self, limit=80, before=None):
+        rows = self.db.execute("SELECT * FROM messages WHERE id < ? ORDER BY id DESC LIMIT ?",
+                               (before if before is not None else 9223372036854775807, limit)).fetchall()
         result = [dict(row) for row in reversed(rows)]
         if result:
             links = {}
@@ -141,7 +142,7 @@ class Store:
     def add_media(self, kind, name, png):
         if kind not in ("emoji", "sticker") or not isinstance(name,str) or not name.strip() or len(name.strip()) > 40:
             raise ValueError("종류와 이름(40자 이하)을 확인해주세요.")
-        if not isinstance(png,bytes) or len(png)>4*1024*1024 or not png.startswith(b"\x89PNG\r\n\x1a\n"):
+        if not isinstance(png,bytes) or len(png)>4*1024*1024 or not (png.startswith(b"\x89PNG\r\n\x1a\n") or png.startswith((b"GIF87a", b"GIF89a")) or (png.startswith(b"RIFF") and png[8:12] == b"WEBP")):
             raise ValueError("올바른 이미지를 선택해주세요.")
         if len(self.media_assets()) >= 200:
             raise ValueError("이모지와 스티커는 합쳐서 200개까지 등록할 수 있어요.")
@@ -149,6 +150,13 @@ class Store:
         with self.db:
             self.db.execute("INSERT INTO chat_media(id,kind,name,png) VALUES (?,?,?,?)", (asset_id,kind,name.strip(),png))
         return asset_id
+
+    def rename_media(self, asset_id, name):
+        if not isinstance(name, str) or not name.strip() or len(name.strip()) > 40:
+            raise ValueError('이름은 1~40자로 입력해주세요.')
+        with self.db:
+            if not self.db.execute("UPDATE chat_media SET name=? WHERE id=? AND active=1", (name.strip(), asset_id)).rowcount:
+                raise ValueError('등록된 이미지를 찾을 수 없어요.')
 
     def archive_media(self, asset_id):
         with self.db:

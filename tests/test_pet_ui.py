@@ -59,6 +59,92 @@ class UITests(unittest.TestCase):
         self.qt.processEvents()
         self.assertFalse(self.controller.busy)
 
+    def test_media_picker_position_width_and_rename(self):
+        from PySide6.QtWidgets import QLineEdit
+        from media_picker import ArtworkButton
+        png = (Path(__file__).resolve().parents[1] / 'desktop/python/mobile/icon.png').read_bytes()
+        keys = [self.store.add_media('emoji', 'long_unbroken_image_name_' + str(i) * 10, png) for i in range(9)]
+        self.panel.show()
+        self.panel.move(500, 80)
+        self.panel.open_media_picker()
+        self.qt.processEvents()
+        picker = self.panel.media_picker
+        self.assertEqual(picker.windowModality(), Qt.WindowModality.NonModal)
+        self.assertTrue(picker.windowFlags() & Qt.WindowType.WindowStaysOnTopHint)
+        scroll = picker.tabs.widget(0)
+        self.assertEqual(scroll.horizontalScrollBar().maximum(), 0)
+        for button in scroll.findChildren(ArtworkButton):
+            self.assertLessEqual(button.mapTo(scroll.viewport(), QPoint()).x() + button.width(), scroll.viewport().width())
+        field = scroll.findChildren(QLineEdit)[0]
+        field.setText('새 이모지 이름')
+        field.editingFinished.emit()
+        self.assertEqual(self.store.media_assets()[0]['name'], '새 이모지 이름')
+        self.assertEqual(self.store.media_image(keys[0]), png)
+        field.setText(' ')
+        field.editingFinished.emit()
+        self.assertEqual(field.text(), '새 이모지 이름')
+        self.panel.open_media_picker()
+        self.assertIs(self.panel.media_picker, picker)
+        picker.close()
+
+    def test_custom_typing_frames_persist_animate_and_reset(self):
+        editor = self.panel.appearance_editor
+        from PySide6.QtGui import QPixmap, QColor
+        paths = []
+        for index, color in enumerate(('red', 'green', 'blue')):
+            path = Path(self.directory.name) / f'frame-{index}.png'
+            pixmap = QPixmap(120, 100)
+            pixmap.fill(QColor(color))
+            pixmap.save(str(path))
+            paths.append(str(path))
+        self.assertFalse(editor.import_image(paths[1], frame='left'))
+        for frame, path in zip(('idle', 'left', 'right'), paths):
+            self.assertTrue(editor.import_image(path, frame=frame))
+        self.controller.apply_appearance()
+        pet = self.controller.pet
+        self.assertFalse(pet.bongo)
+        self.assertEqual(len(pet.custom_frames), 3)
+        self.assertEqual([p.toImage().pixelColor(0, 0).name() for p in pet.custom_frames], ['#ff0000', '#008000', '#0000ff'])
+        with patch('app.time.monotonic', return_value=100):
+            pet.set_reply_typing(True)
+        self.assertEqual(pet.typing_frame, 1)
+        with patch('app.time.monotonic', return_value=100.25):
+            pet.animate()
+            pet.grab()  # Exercise custom-frame rendering with the spring transform.
+        self.assertEqual(pet.typing_frame, 2)
+        pet.set_reply_typing(False)
+        self.assertEqual(pet.typing_frame, 0)
+        pet.on_key_activity()
+        self.assertEqual(pet.typing_frame, 1)
+        editor.save(avatar='', avatar_frame='left')
+        self.assertEqual(pet.custom_frames[1].toImage(), pet.image.toImage())
+        self.assertNotIn('avatar_left_png', self.store.context())
+        editor.reset()
+        self.assertTrue(pet.bongo)
+        self.assertEqual(pet.custom_frames, [])
+        self.assertFalse(self.store.get('avatar_right_png'))
+
+    def test_reply_typing_without_keyboard_and_reduced_motion(self):
+        pet = self.controller.pet
+        pet.keyboard.set_enabled(False)
+        with patch("app.time.monotonic", return_value=100.0):
+            pet.set_reply_typing(True)
+        self.assertEqual(pet.typing_frame, 1)
+        with patch("app.time.monotonic", return_value=100.25):
+            pet.animate()
+        self.assertEqual(pet.typing_frame, 2)
+        self.assertEqual(pet.frame_changed_at, 100.25)
+        pet.settings.setValue("reduce_motion", True)
+        pet.animate()
+        self.assertEqual(pet.typing_frame, 0)
+        pet.settings.setValue("reduce_motion", False)
+        with patch("app.time.monotonic", return_value=101.0):
+            pet.animate()
+        self.assertEqual(pet.typing_frame, 1)
+        self.controller.finished()
+        self.assertFalse(pet.reply_typing)
+        self.assertEqual(pet.typing_frame, 0)
+
     def add(self, kind="schedule", title="휴식", **kwargs):
         op = dict(action="add", kind=kind, title=title, **kwargs)
         self.store.apply_reply({"reply": "기억했어요.", "operations": [op]})

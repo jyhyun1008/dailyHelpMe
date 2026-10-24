@@ -47,7 +47,7 @@ let mediaKind='emoji';
 const mediaGrid=node('div',undefined,'media-grid');
 for(const [kind,title] of [['emoji','이모지'],['sticker','스티커']]){const button=node('button',title);button.type='button';button.onclick=()=>{mediaKind=kind;renderMediaPicker();};mediaTabs.append(button);}
 const mediaName=node('input');mediaName.maxLength=40;mediaName.placeholder='이미지 이름';mediaName.setAttribute('aria-label','이미지 이름');
-const mediaFile=node('input');mediaFile.type='file';mediaFile.accept='image/png,image/jpeg,image/webp';mediaFile.setAttribute('aria-label','등록할 이미지');
+const mediaFile=node('input');mediaFile.type='file';mediaFile.accept='image/png,image/jpeg,image/webp,image/gif';mediaFile.setAttribute('aria-label','등록할 이미지');
 const mediaRegister=node('button','선택한 종류로 등록');mediaRegister.type='button';
 const mediaHelp=node('p','이모지는 글 사이에 삽입 · 스티커는 AI 답장 없이 바로 전송','muted');mediaHelp.setAttribute('role','status');
 mediaDialog.append(mediaHeading,mediaClose,mediaTabs,mediaGrid,mediaName,mediaFile,mediaRegister,mediaHelp);document.body.append(mediaDialog);

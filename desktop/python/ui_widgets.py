@@ -15,7 +15,7 @@ from store import now_kst
 from typography import FONT_FAMILY
 from calendar_data import event_time
 from message_links import display_text, source_links
-from chat_media import TOKEN
+from chat_media import TOKEN, artwork_movie
 from media_rendering import rich_layout, draw_artwork
 
 COLORS = {"schedule": "#c878a0", "todo": "#e0a16d", "routine": "#75b5a5", "bucket": "#b28dc6"}
@@ -175,6 +175,7 @@ class MessageList(QListWidget):
         self._link_press = None
         self.media_assets = {}
         self.media_pixmaps = {}
+        self.media_movies = {}
         self.rich_cache = {}
         self.media_hits = []
         self.media_scales = {}
@@ -189,9 +190,15 @@ class MessageList(QListWidget):
             if asset_id not in self.media_pixmaps:
                 image = QPixmap();image.loadFromData(store.media_image(asset_id))
                 self.media_pixmaps[asset_id] = image
+                movie = artwork_movie(store.media_image(asset_id), self, lambda frame, key=asset_id: self.update_media_frame(key, frame))
+                if movie: self.media_movies[asset_id] = movie
         self.media_assets = assets
         self.rich_cache.clear()
         self.doItemsLayout();self.viewport().update()
+
+    def update_media_frame(self, key, frame):
+        self.media_pixmaps[key] = frame
+        if self.isVisible(): self.viewport().update()
 
     def paintEvent(self,event):
         self.media_hits = []

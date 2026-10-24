@@ -84,15 +84,25 @@ class Composer(QTextEdit):
         self.setFixedHeight(46)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setAccessibleName("챗봇에게 보낼 메시지")
+        self.emoji_movies = {}
         self.textChanged.connect(self.fit_height)
 
     def insert_emoji(self, asset_id, png):
         image = QImage.fromData(png)
         url = QUrl('customemoji/' + asset_id)
         self.document().addResource(QTextDocument.ResourceType.ImageResource,url,image)
+        if asset_id not in self.emoji_movies:
+            from chat_media import artwork_movie
+            movie = artwork_movie(png, self, lambda frame: self.update_emoji_frame(url, frame))
+            if movie: self.emoji_movies[asset_id] = movie
         format = QTextImageFormat()
         format.setName(url.toString());format.setWidth(26);format.setHeight(26)
         self.textCursor().insertImage(format)
+
+    def update_emoji_frame(self, url, frame):
+        self.document().addResource(QTextDocument.ResourceType.ImageResource, url, frame.toImage())
+        self.document().markContentsDirty(0, self.document().characterCount())
+        self.viewport().update()
 
     def message_text(self):
         from chat_media import emoji_token
@@ -280,7 +290,7 @@ class Drawer(QWidget):
         row = QHBoxLayout()
         row.addWidget(label("대화", "heading"))
         row.addStretch()
-        self.more = button("이전 대화", self.load_older)
+        self.more = button("이전 대화 더 불러오기", self.load_older)
         self.more.setObjectName("quietButton")
         row.addWidget(self.more)
         page.addLayout(row)
@@ -327,8 +337,14 @@ class Drawer(QWidget):
 
     def open_media_picker(self):
         from media_picker import MediaPicker
+        if getattr(self, 'media_picker', None) is not None:
+            self.media_picker.show()
+            self.media_picker.raise_()
+            self.media_picker.activateWindow()
+            return
         self.media_picker = MediaPicker(self.companion,self)
-        self.media_picker.open()
+        self.media_picker.destroyed.connect(lambda: setattr(self, 'media_picker', None))
+        self.media_picker.show()
 
     def build_calendar(self):
         page = self.page(scroll=True)

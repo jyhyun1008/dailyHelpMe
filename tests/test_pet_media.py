@@ -43,6 +43,33 @@ class MediaTests(unittest.TestCase):
         if self.companion.worker:self.companion.worker.wait(3000)
         self.companion.dispose();self.qt.processEvents();self.store.db.close();self.temp.cleanup()
 
+    def test_animated_webp_and_gif_preserved_and_played(self):
+        from media_picker import ArtworkButton
+        from chat_media import image_content_type
+        for extension in ('webp', 'gif'):
+            with self.subTest(extension=extension):
+                raw = (Path(__file__).parent / 'fixtures' / ('animated.' + extension)).read_bytes()
+                self.assertEqual(normalize_image(raw), raw)
+                self.assertEqual(image_content_type(raw), 'image/' + extension)
+                key = self.store.add_media('emoji', extension, normalize_image(raw))
+                self.assertEqual(self.store.media_image(key), raw)
+                asset = next(a for a in self.store.media_assets() if a['id'] == key)
+                button = ArtworkButton(asset, raw, lambda: None)
+                self.assertIsNotNone(button.movie)
+                composer = self.companion.panel.input
+                composer.insert_emoji(key, raw)
+                messages = self.companion.panel.messages
+                messages.set_media(self.store)
+                movie = messages.media_movies[key]
+                movie.jumpToFrame(0)
+                first = movie.currentPixmap().toImage().pixelColor(0, 0)
+                self.assertTrue(movie.jumpToFrame(1))
+                self.assertNotEqual(first, messages.media_pixmaps[key].toImage().pixelColor(0, 0))
+                self.assertTrue(button.movie.jumpToFrame(1))
+                self.assertTrue(composer.emoji_movies[key].jumpToFrame(1))
+                self.assertIn(emoji_token(key), composer.message_text())
+                button.deleteLater()
+
     def test_image_validation_and_archive_preserves_history(self):
         with self.assertRaises(ValueError):normalize_image(b'<svg onload="bad"/>')
         with self.assertRaises(ValueError):normalize_image(b'a'*(4*1024*1024+1))

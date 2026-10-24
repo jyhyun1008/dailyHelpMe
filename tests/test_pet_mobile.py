@@ -87,6 +87,31 @@ class MobileTests(unittest.TestCase):
         self.assertIn("Secure", headers["Set-Cookie"])
         self.cookie = headers["Set-Cookie"].split(";")[0]
 
+    def test_message_pages_are_bounded_and_reach_history_beyond_1000(self):
+        self.pair()
+        with self.store.db:
+            self.store.db.execute("DELETE FROM messages")
+            self.store.db.executemany(
+                "INSERT INTO messages(role,content,created_at) VALUES ('user',?,?)",
+                [(str(index), "2026-10-24T12:00:00+09:00") for index in range(1050)])
+        page = json.loads(self.request("/api/state?limit=1000")[2])
+        self.assertEqual(len(page["messages"]), 50)
+        self.assertTrue(page["hasMoreMessages"])
+        seen = [m["id"] for m in page["messages"]]
+        # A new reply between page requests must not shift the older page.
+        self.store.message("assistant", "새 답장")
+        while page["hasMoreMessages"]:
+            page = json.loads(self.request("/api/state?before=" + str(seen[0]))[2])
+            ids = [m["id"] for m in page["messages"]]
+            self.assertEqual(len(ids), 50)
+            self.assertLess(ids[-1], seen[0])
+            seen = ids + seen
+        self.assertEqual(len(seen), 1050)
+        self.assertEqual(len(set(seen)), 1050)
+        empty = json.loads(self.request("/api/state?before=" + str(seen[0]))[2])
+        self.assertEqual(empty["messages"], [])
+        self.assertFalse(empty["hasMoreMessages"])
+
     def test_custom_media_auth_upload_archive_and_sticker_without_ai(self):
         from test_pet_media import sample_png
         image = base64.b64encode(sample_png()).decode()
@@ -294,6 +319,18 @@ class MobileTests(unittest.TestCase):
         self.assertEqual((apple.width(),apple.height()),(180,180))
         self.assertEqual(self.request("/../store.py")[0], 404)
 
+    def test_animated_media_http_preserves_bytes_and_mime_type(self):
+        self.pair()
+        for extension in ('webp', 'gif'):
+            raw = (Path(__file__).parent / 'fixtures' / ('animated.' + extension)).read_bytes()
+            status, _, body = self.request('/api/media/add', {'kind': 'emoji', 'name': extension, 'image': base64.b64encode(raw).decode()})
+            self.assertEqual(status, 200)
+            asset = self.store.media_assets()[-1]
+            status, headers, body = self.request('/api/media/image/' + asset['id'])
+            self.assertEqual(status, 200)
+            self.assertEqual(body, raw)
+            self.assertEqual(dict(headers)['Content-Type'], 'image/' + extension)
+
     def test_push_endpoint_validation_and_stable_key(self):
         self.pair()
         first = self.mobile.vapid_key()
@@ -316,6 +353,7 @@ class MobileTests(unittest.TestCase):
             return base64.urlsafe_b64encode(value).decode().rstrip("=")
         subscription = {"endpoint": "https://web.push.apple.com/TEST", "keys": {"p256dh": encoded(point), "auth": encoded(os.urandom(16))}}
         self.assertEqual(self.request("/api/push/subscribe", {"subscription": subscription})[0], 200)
+        self.assertTrue(json.loads(self.request("/api/state")[2])["pushSubscribed"])
         class Response:
             status_code = 410
             headers = {}
@@ -331,6 +369,10 @@ class MobileTests(unittest.TestCase):
             self.qt.processEvents()
         self.assertTrue(post.called)
         self.assertIsInstance(post.call_args.kwargs["data"], bytes)
+        authorization = post.call_args.kwargs["headers"]["Authorization"]
+        token = authorization.split("t=", 1)[1].split(",", 1)[0]
+        claims = json.loads(base64.urlsafe_b64decode(token.split(".")[1] + "=="))
+        self.assertEqual(claims["sub"], "https://github.com/jyhyun1008/dailyHelpMe")
         self.assertNotIn("진짜 암호화되는 테스트".encode(), post.call_args.kwargs["data"])
         self.assertEqual(self.store.db.execute("SELECT COUNT(*) FROM mobile_push").fetchone()[0], 0)
 
