@@ -11,6 +11,8 @@ from zoneinfo import ZoneInfo
 
 KST = ZoneInfo("Asia/Seoul")
 KINDS = {"todo": "데드라인", "bucket": "버킷리스트", "routine": "루틴", "schedule": "일정"}
+WEATHERS = ["☀️ 맑음", "⛅ 구름 조금", "☁️ 흐림", "🌧️ 비", "⛈️ 천둥번개", "❄️ 눈", "🌫️ 안개", "💨 바람"]
+MOODS = ["😊 좋음", "🥰 행복", "😌 평온", "😐 그저 그럼", "😴 피곤", "😢 슬픔", "😰 불안", "😠 화남"]
 
 
 def now_kst():
@@ -61,7 +63,15 @@ class Store:
                 date TEXT PRIMARY KEY, title TEXT NOT NULL, content TEXT NOT NULL,
                 created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS reminders (key TEXT PRIMARY KEY);
+            CREATE TABLE IF NOT EXISTS bookmarks (
+                message_id INTEGER PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+                created_at TEXT NOT NULL);
         """)
+        columns = {row[1] for row in self.db.execute("PRAGMA table_info(diary)")}
+        for column, definition in (("weather", "TEXT NOT NULL DEFAULT ''"), ("mood", "TEXT NOT NULL DEFAULT ''"), ("tags", "TEXT NOT NULL DEFAULT '[]'")):
+            if column not in columns:
+                self.db.execute(f"ALTER TABLE diary ADD COLUMN {column} {definition}")
+        self.db.commit()
         path.chmod(0o600)
 
     def get(self, key, default=""):
@@ -102,7 +112,22 @@ class Store:
             for message in result:
                 if message["id"] in stickers:
                     message["sticker"] = stickers[message["id"]]
+            marked = {row[0] for row in self.db.execute(f"SELECT message_id FROM bookmarks WHERE message_id IN ({placeholders})", [m["id"] for m in result])}
+            for message in result:
+                message["bookmarked"] = message["id"] in marked
         return result
+
+    def toggle_bookmark(self, message_id):
+        if type(message_id) is not int or not self.db.execute("SELECT 1 FROM messages WHERE id=?", (message_id,)).fetchone():
+            raise ValueError("북마크할 말풍선을 찾을 수 없어요.")
+        with self.db:
+            if not self.db.execute("DELETE FROM bookmarks WHERE message_id=?", (message_id,)).rowcount:
+                self.db.execute("INSERT INTO bookmarks VALUES (?,?)", (message_id, now_kst().isoformat()))
+
+    def bookmarks(self):
+        rows = self.db.execute("SELECT m.id,m.role,m.content,m.created_at,b.created_at AS bookmarked_at FROM bookmarks b "
+                               "JOIN messages m ON m.id=b.message_id ORDER BY b.created_at DESC, m.id DESC").fetchall()
+        return [dict(row) for row in rows]
 
     def media_assets(self, include_archived=False):
         return [dict(row) for row in self.db.execute("SELECT id,kind,name,active FROM chat_media" + ("" if include_archived else " WHERE active=1") + " ORDER BY rowid")]
@@ -171,34 +196,75 @@ class Store:
             raise ValueError("일기 날짜를 확인해주세요.")
         return value
 
+    @staticmethod
+    def diary_row(row):
+        entry = dict(row)
+        entry["tags"] = json.loads(entry["tags"])
+        return entry
+
     def diary_entry(self, day):
         day = self.diary_date(day)
         row = self.db.execute("SELECT * FROM diary WHERE date=?", (day,)).fetchone()
-        return dict(row) if row else None
+        return self.diary_row(row) if row else None
 
-    def save_diary(self, day, title, content):
+    @staticmethod
+    def diary_tags(tags):
+        if tags is None:
+            return []
+        if isinstance(tags, str):
+            tags = tags.split(",")
+        if not isinstance(tags, list) or any(not isinstance(tag, str) for tag in tags):
+            raise ValueError("태그를 확인해주세요.")
+        result = list(dict.fromkeys(tag.strip().lstrip("#").strip() for tag in tags if tag.strip().lstrip("#").strip()))
+        if len(result) > 20 or any(len(tag) > 30 for tag in result):
+            raise ValueError("태그는 20개, 각 30자까지 달 수 있어요.")
+        return result
+
+    def save_diary(self, day, title, content, weather=None, mood=None, tags=None):
+        """Weather, mood and tags left as None keep the saved values."""
         day = self.diary_date(day)
         if not isinstance(title, str) or not isinstance(content, str) or len(title) > 200 or len(content) > 30000:
             raise ValueError("일기는 제목 200자, 본문 30,000자까지 저장할 수 있어요.")
+        if any(value is not None and (not isinstance(value, str) or len(value) > 20) for value in (weather, mood)):
+            raise ValueError("날씨와 기분을 확인해주세요.")
+        old = self.diary_entry(day) or {"weather": "", "mood": "", "tags": []}
+        weather = old["weather"] if weather is None else weather.strip()
+        mood = old["mood"] if mood is None else mood.strip()
+        tags = old["tags"] if tags is None else self.diary_tags(tags)
         stamp = now_kst().isoformat()
         with self.db:
-            self.db.execute("INSERT INTO diary VALUES (?,?,?,?,?) ON CONFLICT(date) DO UPDATE SET "
-                            "title=excluded.title, content=excluded.content, updated_at=excluded.updated_at",
-                            (day, title.strip(), content, stamp, stamp))
+            self.db.execute("INSERT INTO diary(date,title,content,created_at,updated_at,weather,mood,tags) VALUES (?,?,?,?,?,?,?,?) "
+                            "ON CONFLICT(date) DO UPDATE SET title=excluded.title, content=excluded.content, updated_at=excluded.updated_at, "
+                            "weather=excluded.weather, mood=excluded.mood, tags=excluded.tags",
+                            (day, title.strip(), content, stamp, stamp, weather, mood, json.dumps(tags, ensure_ascii=False)))
         return self.diary_entry(day)
+
+    def diary_entries(self, tag=None):
+        entries = [self.diary_row(row) for row in self.db.execute("SELECT * FROM diary ORDER BY date DESC")]
+        return [entry for entry in entries if not tag or tag in entry["tags"]]
+
+    def diary_tag_counts(self):
+        counts = {}
+        for entry in self.diary_entries():
+            for tag in entry["tags"]:
+                counts[tag] = counts.get(tag, 0) + 1
+        return sorted(counts.items(), key=lambda pair: (-pair[1], pair[0]))
 
     def delete_diary(self, day):
         with self.db:
             self.db.execute("DELETE FROM diary WHERE date=?", (self.diary_date(day),))
 
     def export_diary(self, format="json"):
-        entries = [dict(row) for row in self.db.execute("SELECT * FROM diary ORDER BY date")]
+        entries = [self.diary_row(row) for row in self.db.execute("SELECT * FROM diary ORDER BY date")]
         if format == "json":
             return json.dumps({"version": 1, "timezone": "Asia/Seoul", "entries": entries}, ensure_ascii=False, indent=2) + "\n"
         if format == "markdown":
             parts = ["# 날도와줘 일기\n"]
             for entry in entries:
                 parts.append("## " + entry["date"] + (" · " + entry["title"].replace("\n", " ") if entry["title"] else ""))
+                labels = [value for value in (entry["weather"], entry["mood"]) if value] + ["#" + tag for tag in entry["tags"]]
+                if labels:
+                    parts.append(" ".join(labels))
                 parts.append(entry["content"])
                 parts.append("---")
             return "\n\n".join(parts) + "\n"
@@ -257,7 +323,7 @@ class Store:
     def diary_context(self, limit=14, budget=24000):
         entries = []
         for row in self.db.execute("SELECT * FROM diary ORDER BY date DESC LIMIT ?", (limit,)):
-            entry = dict(row)
+            entry = self.diary_row(row)
             content = entry["content"][:min(4000, budget)]
             entry["truncated"] = len(content) != len(entry["content"])
             entry["content"] = content

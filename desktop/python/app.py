@@ -444,6 +444,11 @@ class Companion(QObject):
         self.store.confirm(message_id)
         self.panel.refresh_messages()
 
+    def toggle_bookmark(self, message_id):
+        self.store.toggle_bookmark(message_id)
+        self.panel.refresh_messages()
+        self.panel.diary.refresh_bookmarks()
+
     def toggle_item(self, item_id):
         if not self.busy:
             self.store.toggle_completed(item_id)

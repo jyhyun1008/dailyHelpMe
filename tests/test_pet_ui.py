@@ -141,6 +141,30 @@ class UITests(unittest.TestCase):
         diary.delete()
         self.assertIsNone(self.store.diary_entry(diary.current_day))
 
+    def test_diary_list_tag_filter_and_editor_navigation(self):
+        self.store.save_diary("2026-10-20", "카페", "라떼", tags=["카페"])
+        self.store.save_diary("2026-10-22", "산책", "한강", weather="☀️ 맑음", tags=["산책", "카페"])
+        self.panel.show_page(6)
+        diary = self.panel.diary
+        diary.refresh_list()
+        self.assertEqual(diary.view, "list")
+        self.assertFalse(diary.editor.isVisible())
+        self.assertEqual([diary.tag_filter.itemData(i) for i in range(diary.tag_filter.count())], ["", "카페", "산책"])
+        cards = [diary.entry_cards.layout().itemAt(i).widget() for i in range(diary.entry_cards.layout().count() - 1)]
+        self.assertEqual([card.day for card in cards], ["2026-10-22", "2026-10-20"])
+        diary.tag_filter.setCurrentIndex(2)
+        self.assertEqual([entry["date"] for entry in diary.entries_snapshot], ["2026-10-22"])
+        cards[1].clicked.emit("2026-10-20")
+        self.assertEqual((diary.view, diary.current_day, diary.title.text()), ("editor", "2026-10-20", "카페"))
+        self.assertTrue(diary.editor.isVisible())
+        diary.title.setText("카페 데이트")
+        diary.show_list()
+        self.assertEqual(self.store.diary_entry("2026-10-20")["title"], "카페 데이트")
+        self.assertTrue(diary.browser.isVisible())
+        diary.bookmark_toggle.setChecked(True)
+        self.assertFalse(diary.browser.isVisible())
+        self.assertTrue(diary.bookmark_list.isVisible())
+
     def test_diary_ai_draft_preview_apply_conflict_and_failure(self):
         diary = self.panel.diary
         self.store.message("user", "오늘 산책했어")

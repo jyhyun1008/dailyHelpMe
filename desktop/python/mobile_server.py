@@ -300,7 +300,7 @@ class MobileService(QObject):
         if method == "POST" and path == "/api/diary/draft/dismiss":
             self.companion.dismiss_diary_draft()
             return 200, {"ok": True}, {}
-        if path in ("/api/diary", "/api/diary/delete", "/api/diary/export", "/api/week"):
+        if path in ("/api/diary", "/api/diary/list", "/api/diary/delete", "/api/diary/export", "/api/week"):
             from urllib.parse import parse_qs
             query = parse_qs(url.query)
             if method == "GET" and path == "/api/diary/export":
@@ -311,10 +311,15 @@ class MobileService(QObject):
             if method == "GET" and path == "/api/week":
                 from calendar_data import week_data
                 return 200, week_data(self.store.items(), query.get("date", [now_kst().date().isoformat()])[0]), {}
+            if method == "GET" and path == "/api/diary/list":
+                entries = [{key: entry[key] for key in ("date", "title", "weather", "mood", "tags")} | {"preview": " ".join(entry["content"].split())[:90]}
+                           for entry in self.store.diary_entries(query.get("tag", [None])[0])]
+                return 200, {"entries": entries, "tags": self.store.diary_tag_counts()}, {}
             if method == "GET" and path == "/api/diary":
-                return 200, {"entry": self.store.diary_entry(query.get("date", [now_kst().date().isoformat()])[0])}, {}
+                from store import MOODS, WEATHERS
+                return 200, {"entry": self.store.diary_entry(query.get("date", [now_kst().date().isoformat()])[0]), "weathers": WEATHERS, "moods": MOODS}, {}
             if method == "POST" and path == "/api/diary":
-                entry = self.store.save_diary(data.get("date"), data.get("title"), data.get("content"))
+                entry = self.store.save_diary(data.get("date"), data.get("title"), data.get("content"), weather=data.get("weather"), mood=data.get("mood"), tags=data.get("tags"))
                 return 200, {"entry": entry}, {}
             if method == "POST" and path == "/api/diary/delete":
                 self.store.delete_diary(data.get("date"))
@@ -324,7 +329,7 @@ class MobileService(QObject):
             from urllib.parse import parse_qs
             limit = min(1000, max(50, int(parse_qs(url.query).get("limit", [100])[0])))
             from appearance import read_appearance
-            return 200, {"media": self.store.media_assets(include_archived=True), "webSearchEnabled": self.store.get("web_search_enabled", "1") == "1", "appearance": read_appearance(self.store), "now": now_kst().isoformat(), "messages": self.store.history(limit),
+            return 200, {"media": self.store.media_assets(include_archived=True), "webSearchEnabled": self.store.get("web_search_enabled", "1") == "1", "appearance": read_appearance(self.store), "now": now_kst().isoformat(), "messages": self.store.history(limit), "bookmarks": self.store.bookmarks(),
                          "items": self.store.items(), "todayItems": today_items(self.store.items(), now_kst().date().isoformat()), "profile": self.store.get("profile"),
                          "diaryDraft": ({k: self.companion.diary_draft[k] for k in ("date", "content")} if self.companion.diary_draft else None),
                          "diaryDraftStatus": self.companion.diary_draft_status, "busy": self.companion.busy, "error": self.companion.mobile_reply_error, "pushError": self.last_error}, {}
@@ -348,6 +353,8 @@ class MobileService(QObject):
             return 200, {"ok": True}, {"Set-Cookie": f"{COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0"}
         if method == "POST" and path == "/api/confirm":
             self.store.confirm(int(data["id"]))
+        elif method == "POST" and path == "/api/bookmark":
+            self.companion.toggle_bookmark(data.get("id"))
         elif method == "POST" and path == "/api/push/subscribe":
             subscription = data.get("subscription")
             if not isinstance(subscription, dict) or not valid_endpoint(subscription.get("endpoint")):

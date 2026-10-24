@@ -25,6 +25,50 @@ class MemoryTests(unittest.TestCase):
         self.store.db.close()
         self.directory.cleanup()
 
+    def test_bookmarks_toggle_and_follow_message_deletion(self):
+        self.store.message("user", "기억하고 싶은 말")
+        self.store.message("assistant", "좋은 하루였네요")
+        first, second = [m["id"] for m in self.store.history()]
+        self.store.toggle_bookmark(second)
+        self.store.toggle_bookmark(first)
+        self.assertEqual([b["id"] for b in self.store.bookmarks()], [first, second])
+        self.assertEqual([m["bookmarked"] for m in self.store.history()], [True, True])
+        self.store.toggle_bookmark(first)
+        self.assertEqual([b["role"] for b in self.store.bookmarks()], ["assistant"])
+        with self.assertRaises(ValueError):
+            self.store.toggle_bookmark(999)
+        with self.store.db:
+            self.store.db.execute("DELETE FROM messages WHERE id=?", (second,))
+        self.assertEqual(self.store.bookmarks(), [])
+
+    def test_diary_tags_keep_on_plain_save_and_export(self):
+        entry = self.store.save_diary("2026-10-24", "토요일", "산책", weather="🌧️ 비", mood="😌 평온", tags=["#산책", " 카페 ", "산책", ""])
+        self.assertEqual((entry["weather"], entry["mood"], entry["tags"]), ("🌧️ 비", "😌 평온", ["산책", "카페"]))
+        self.assertEqual(self.store.save_diary("2026-10-24", "토요일", "산책 끝")["tags"], ["산책", "카페"])
+        self.assertIn("🌧️ 비 😌 평온 #산책 #카페", self.store.export_diary("markdown"))
+        self.assertEqual(self.store.diary_context()[0]["tags"], ["산책", "카페"])
+        with self.assertRaises(ValueError):
+            self.store.save_diary("2026-10-24", "", "", tags=[str(n) for n in range(21)])
+        with self.assertRaises(ValueError):
+            self.store.save_diary("2026-10-24", "", "", mood="a" * 21)
+
+    def test_diary_entries_filter_by_tag_and_count_tags(self):
+        self.store.save_diary("2026-10-20", "", "a", tags=["카페"])
+        self.store.save_diary("2026-10-22", "", "b", tags=["산책", "카페"])
+        self.assertEqual([e["date"] for e in self.store.diary_entries()], ["2026-10-22", "2026-10-20"])
+        self.assertEqual([e["date"] for e in self.store.diary_entries("산책")], ["2026-10-22"])
+        self.assertEqual(self.store.diary_tag_counts(), [("카페", 2), ("산책", 1)])
+
+    def test_old_diary_table_gains_tag_columns(self):
+        self.store.db.close()
+        path = Path(self.directory.name) / "old.sqlite3"
+        import sqlite3
+        with sqlite3.connect(path) as old:
+            old.execute("CREATE TABLE diary (date TEXT PRIMARY KEY, title TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)")
+            old.execute("INSERT INTO diary VALUES ('2026-10-01','','예전 일기','x','x')")
+        self.store = Store(path)
+        self.assertEqual(self.store.diary_entry("2026-10-01")["tags"], [])
+
     def test_creation_links_persist_skip_duplicates_and_survive_deleted_items(self):
         result = {"reply":"등록했어요", "operations":[operation(title="첫 작업"), operation(title="다음 작업")]}
         self.store.apply_reply(result, link_created=True)

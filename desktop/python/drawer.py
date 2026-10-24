@@ -20,7 +20,7 @@ from subtask_widgets import SubtaskEditor
 from diary_widgets import DiaryWidget
 from weekly_widgets import WeeklyTimetable
 from store import KINDS, now_kst
-from ui_widgets import AgendaList, COLORS, DAYS, MessageList, MobileCalendar, TimelineList, is_done
+from ui_widgets import AgendaList, COLORS, DATA_ROLE, DAYS, MessageList, MobileCalendar, TimelineList, is_done
 
 STYLE = """
 QWidget { font-family: 'ThinMulmaru'; font-size: 13px; color: #634b58; }
@@ -289,6 +289,8 @@ class Drawer(QWidget):
         self.messages = MessageList()
         self.messages.item_requested.connect(self.edit_item)
         self.messages.itemDoubleClicked.connect(lambda item: self.companion.confirm_message(item.data(Qt.ItemDataRole.UserRole)))
+        self.messages.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.messages.customContextMenuRequested.connect(self.message_menu)
         page.addWidget(self.messages, 1)
         self.chat_status = label("")
         self.chat_status.hide()
@@ -311,6 +313,17 @@ class Drawer(QWidget):
         self.send_button.setAccessibleName("메시지 전송")
         row.addWidget(self.send_button, 0, Qt.AlignmentFlag.AlignBottom)
         page.addLayout(row)
+
+    def message_menu(self, point):
+        row = self.messages.itemAt(point)
+        if not row:
+            return
+        from menus import RoundedMenu
+        message = row.data(DATA_ROLE)
+        menu = RoundedMenu()
+        bookmark = menu.addAction("북마크 해제" if message.get("bookmarked") else "북마크하기")
+        bookmark.triggered.connect(lambda: self.companion.toggle_bookmark(message["id"]))
+        menu.exec(self.messages.viewport().mapToGlobal(point))
 
     def open_media_picker(self):
         from media_picker import MediaPicker
@@ -359,11 +372,7 @@ class Drawer(QWidget):
         page.addWidget(self.calendar_list)
 
     def open_calendar_diary(self):
-        if not self.diary.flush():
-            self.show_page(6)
-            return
-        self.diary.date.setDate(self.calendar.selectedDate())
-        self.diary.load()
+        self.diary.open_entry(self.calendar.selectedDate().toString("yyyy-MM-dd"))
         self.show_page(6)
 
     def set_calendar_mode(self, index):
@@ -487,6 +496,7 @@ class Drawer(QWidget):
         self.memory_heading.setText(settings["name"] + "이(가) 기억하는 나")
         self.input.setAccessibleName(settings["name"] + "에게 보낼 메시지")
         self.appearance_editor.refresh(settings)
+        self.diary.apply_theme()
         self.refresh_calendar()
         self.messages.viewport().update()
         self.calendar.grid.update()
@@ -778,6 +788,8 @@ class Drawer(QWidget):
             else:
                 self.leave_editor()
         self.diary.load()
+        self.diary.refresh_bookmarks()
+        self.diary.refresh_list()
         now = now_kst()
         day = QDate(now.year, now.month, now.day)
         self.today_title.setText(f'{now.month}월 {now.day}일 {DAYS[day.dayOfWeek() % 7]}요일')

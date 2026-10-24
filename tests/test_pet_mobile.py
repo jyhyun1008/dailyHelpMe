@@ -141,6 +141,28 @@ class MobileTests(unittest.TestCase):
         self.assertEqual(self.request("/api/diary/delete", {"date": diary["date"]})[0], 200)
         self.assertIsNone(self.store.diary_entry(diary["date"]))
 
+    def test_mobile_bookmarks_and_diary_tags(self):
+        self.pair()
+        self.store.message("user", "오늘 산책했어")
+        message_id = self.store.history()[-1]["id"]
+        self.assertEqual(self.request("/api/bookmark", {"id": message_id})[0], 200)
+        state = json.loads(self.request("/api/state")[2])
+        self.assertTrue(state["messages"][-1]["bookmarked"])
+        self.assertEqual(state["bookmarks"][0]["content"], "오늘 산책했어")
+        self.assertEqual(self.controller.panel.diary.bookmark_toggle.text(), "★ 북마크 1개 ▾")
+        self.assertEqual(self.request("/api/bookmark", {"id": "1"})[0], 400)
+        diary = {"date": "2026-10-24", "title": "", "content": "", "weather": "☀️ 맑음", "mood": "😊 좋음", "tags": "산책, #카페, 산책"}
+        self.assertEqual(self.request("/api/diary", diary)[0], 200)
+        payload = json.loads(self.request("/api/diary?date=2026-10-24")[2])
+        self.assertEqual(payload["entry"]["tags"], ["산책", "카페"])
+        self.assertIn("😊 좋음", payload["moods"])
+        listing = json.loads(self.request("/api/diary/list?tag=" + __import__("urllib.parse").parse.quote("카페"))[2])
+        self.assertEqual([e["date"] for e in listing["entries"]], ["2026-10-24"])
+        self.assertEqual(listing["tags"], [["산책", 1], ["카페", 1]])
+        self.assertEqual(json.loads(self.request("/api/diary/list?tag=none")[2])["entries"], [])
+        self.assertEqual(self.request("/api/bookmark", {"id": message_id})[0], 200)
+        self.assertEqual(json.loads(self.request("/api/state")[2])["bookmarks"], [])
+
     def test_mobile_diary_draft_preview_and_apply(self):
         self.assertEqual(self.request("/api/diary/draft", {"date": "2026-10-24"})[0], 401)
         self.pair()

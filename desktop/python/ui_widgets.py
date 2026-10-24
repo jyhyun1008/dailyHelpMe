@@ -134,6 +134,8 @@ class MessageDelegate(QStyledItemDelegate):
         timestamp = message["created_at"][11:16]
         if message.get("confirmed"):
             timestamp += "  · 확인"
+        if message.get("bookmarked"):
+            timestamp += "  · ★"
         painter.setFont(font(10))
         painter.setPen(themed_color("#aa94a1"))
         painter.drawText(QRectF(x + 3, y + height + 3, width - 6, 16),
