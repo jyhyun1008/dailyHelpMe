@@ -345,7 +345,7 @@ class MobileService(QObject):
                 raise ValueError()
             if self.companion.busy:
                 return 409, {"error": "답장을 먼저 기다려주세요."}, {}
-            self.companion.send_text(text)
+            self.companion.send_text(text, source="mobile")
             return 202, {"ok": True}, {}
         if method == "POST" and path == "/api/retry":
             if self.companion.busy or not self.companion.retry_available:

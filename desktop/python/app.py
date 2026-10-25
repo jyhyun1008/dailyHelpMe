@@ -11,6 +11,7 @@ from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPainterPath, QPixma
 from PySide6.QtWidgets import QApplication, QLabel, QSystemTrayIcon, QWidget
 
 from engine import codex_binary, request_reply
+from speech import SpeechPlayer
 from native_windows import configure_pet_window
 from store import Store
 from drawer import Drawer
@@ -203,13 +204,16 @@ class Companion(QObject):
         self.worker = None
         self.diary_draft = None
         self.diary_draft_status = ""
+        self.reply_source = "desktop"
         self.retry_available = False
         self.login_process = None
         self.mobile_reply_error = ""
         QApplication.instance().setProperty("doa_appearance", read_appearance(store))
         self.pet = Pet()
         self.mobile = MobileService(self)
+        self.speech = SpeechPlayer(self)
         self.panel = Drawer(self)
+        self.speech.status.connect(self.panel.speech_status.setText)
         self.configure_mobile(self.store.get("mobile_enabled") == "1")
         self.pet.clicked.connect(self.toggle_panel)
         self.make_menu()
@@ -335,6 +339,7 @@ class Companion(QObject):
         if self.login_process and self.login_process.state() != QProcess.ProcessState.NotRunning:
             self.login_process.kill()
             self.login_process.waitForFinished(3000)
+        self.speech.close()
         self.panel.shutting_down = True
         self.pet.keyboard.close()
         self.mobile.close()
@@ -376,9 +381,10 @@ class Companion(QObject):
         self.panel.input.clear()
         self.send_text(text)
 
-    def send_text(self, text):
+    def send_text(self, text, *, source="desktop"):
         if self.busy:
             return False
+        self.reply_source = source
         self.retry_available = True
         self.mobile_reply_error = ""
         self.store.message("user", text.strip())
@@ -401,6 +407,7 @@ class Companion(QObject):
         self.pet.say("답장을 생각하고 있어요…")
         self.panel.set_busy(True)
         context = self.store.context()
+        context["speech_enabled"] = self.reply_source == "desktop" and self.store.get("speech_enabled", "0") == "1"
         context["current_request"] = next((m["content"] for m in reversed(context["history"]) if m["role"] == "user"), "")
         self.worker = ReplyWorker(context)
         self.worker.succeeded.connect(self.receive)
@@ -469,6 +476,8 @@ class Companion(QObject):
         self.retry_available = False
         self.pet.say(text)
         self.mobile.notify([text])
+        if self.reply_source == "desktop" and self.store.get("speech_enabled", "0") == "1":
+            self.speech.speak(result.get("speech_ja", ""))
         self.panel.set_status("")
         self.panel.refresh()
 
@@ -489,9 +498,25 @@ class Companion(QObject):
         if texts:
             self.mobile.notify(texts)
             self.pet.say(texts[-1])
+            if self.store.get("speech_enabled", "0") == "1":
+                self.speech.speak("\n".join(texts)[:5000], japanese=False)
             if not self.panel.isVisible():
                 self.tray.showMessage(current()["name"], "\n".join(texts), QSystemTrayIcon.MessageIcon.Information, 10000)
         self.panel.refresh()
+
+    def replay_message(self, message_id):
+        try:
+            text, japanese = self.store.speech_message(message_id)
+            self.speech.speak(text, japanese=japanese)
+        except ValueError as error:
+            self.panel.speech_status.setText(str(error))
+
+    def replay_latest(self):
+        message = next((m for m in reversed(self.store.history()) if m["role"] == "assistant"), None)
+        if message:
+            self.replay_message(message["id"])
+        else:
+            self.panel.speech_status.setText("다시 들을 답장이 아직 없어요.")
 
     def confirm_message(self, message_id):
         self.store.confirm(message_id)
@@ -533,6 +558,7 @@ class Companion(QObject):
     def dispose(self):
         """Release top-level widgets without changing the saved visible preference."""
         self.timer.stop()
+        self.speech.close()
         self.mobile.close()
         self.panel.shutting_down = True
         self.panel.hide()

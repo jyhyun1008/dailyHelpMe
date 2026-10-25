@@ -59,6 +59,42 @@ class UITests(unittest.TestCase):
         self.qt.processEvents()
         self.assertFalse(self.controller.busy)
 
+    def test_japanese_speech_toggle_and_reply(self):
+        self.assertFalse(self.panel.speech_enabled.isChecked())
+        self.panel.speech_enabled.setChecked(True)
+        self.assertEqual(self.store.get("speech_enabled"), "1")
+        with patch.object(self.controller.speech, "speak") as speak:
+            self.controller.receive({"reply": "안녕하세요", "speech_ja": "こんにちは！", "operations": []})
+            speak.assert_called_once_with("こんにちは！")
+        with patch.object(self.controller.speech, "stop") as stop:
+            self.panel.speech_enabled.setChecked(False)
+            stop.assert_called_once()
+        with patch.object(self.controller.speech, "speak") as speak:
+            self.controller.receive({"reply": "잘 가요", "operations": []})
+            speak.assert_not_called()
+
+    def test_replay_saved_japanese_and_older_korean(self):
+        self.controller.receive({"reply": "안녕", "speech_ja": "こんにちは", "operations": []})
+        with patch.object(self.controller.speech, "speak") as speak:
+            self.controller.replay_latest()
+            speak.assert_called_once_with("こんにちは", japanese=True)
+        self.store.message("assistant", "옛날 답장")
+        with patch.object(self.controller.speech, "speak") as speak:
+            self.controller.replay_latest()
+            speak.assert_called_once_with("옛날 답장", japanese=False)
+        self.store.message("user", "읽지 말기")
+        with patch.object(self.controller.speech, "speak") as speak:
+            self.controller.replay_message(self.store.history()[-1]["id"])
+            speak.assert_not_called()
+
+    def test_reminder_speech_respects_setting(self):
+        with patch.object(self.store, "reminders", return_value=["알림 하나", "알림 둘"]), patch.object(self.controller.speech, "speak") as speak:
+            self.controller.tick()
+            speak.assert_not_called()
+            self.panel.speech_enabled.setChecked(True)
+            self.controller.tick()
+            speak.assert_called_once_with("알림 하나\n알림 둘", japanese=False)
+
     def test_media_picker_position_width_and_rename(self):
         from PySide6.QtWidgets import QLineEdit
         from media_picker import ArtworkButton
@@ -503,6 +539,23 @@ class UITests(unittest.TestCase):
         self.assertFalse(any(isinstance(widget, QMainWindow) for widget in self.qt.topLevelWidgets()))
         self.assertIs(self.panel.input.window(), self.panel)
         self.assertIs(self.panel.profile.window(), self.panel)
+
+    def test_mobile_chat_skips_translation_and_audio_including_retry(self):
+        self.panel.speech_enabled.setChecked(True)
+        with patch.object(pet_app, "request_reply", side_effect=RuntimeError("연결 오류")) as request:
+            self.controller.send_text("모바일 인사", source="mobile")
+            self.wait_for_reply()
+            self.assertFalse(request.call_args.args[0]["speech_enabled"])
+        with patch.object(pet_app, "request_reply", return_value={"reply": "안녕하세요", "operations": []}) as request, patch.object(self.controller.speech, "speak") as speak:
+            self.controller.retry()
+            self.wait_for_reply()
+            self.assertFalse(request.call_args.args[0]["speech_enabled"])
+            speak.assert_not_called()
+        with patch.object(pet_app, "request_reply", return_value={"reply": "반가워요", "speech_ja": "こんにちは", "operations": []}) as request, patch.object(self.controller.speech, "speak") as speak:
+            self.controller.send_text("맥 인사")
+            self.wait_for_reply()
+            self.assertTrue(request.call_args.args[0]["speech_enabled"])
+            speak.assert_called_once_with("こんにちは")
 
     def test_send_receive_and_role_bubbles(self):
         answer = {"reply": "천천히 해봐요.", "operations": [

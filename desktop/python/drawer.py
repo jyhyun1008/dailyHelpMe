@@ -333,6 +333,9 @@ class Drawer(QWidget):
         menu = RoundedMenu()
         bookmark = menu.addAction("북마크 해제" if message.get("bookmarked") else "북마크하기")
         bookmark.triggered.connect(lambda: self.companion.toggle_bookmark(message["id"]))
+        if message.get("role") == "assistant":
+            replay = menu.addAction("일본어 음성 다시 듣기")
+            replay.triggered.connect(lambda: self.companion.replay_message(message["id"]))
         menu.exec(self.messages.viewport().mapToGlobal(point))
 
     def open_media_picker(self):
@@ -451,6 +454,22 @@ class Drawer(QWidget):
         self.login_output.setFixedHeight(90)
         self.login_output.hide()
         page.addWidget(self.login_output)
+        page.addWidget(label("일본어 목소리", "section"))
+        self.speech_enabled = QCheckBox("답장을 활기찬 일본어 여성 음성으로 읽기")
+        self.speech_enabled.setChecked(self.store.get("speech_enabled", "0") == "1")
+        def toggle_speech(enabled):
+            self.store.set("speech_enabled", "1" if enabled else "0")
+            if not enabled:
+                self.companion.speech.stop()
+        self.speech_enabled.toggled.connect(toggle_speech)
+        page.addWidget(self.speech_enabled)
+        page.addWidget(label("VOICEVOX를 이 맥에서 실행해주세요. 맥에서 보낸 대화만 일본어로 읽어요. 모바일 대화는 한국어 답변만 해요. VOICEVOX:春日部つむぎ"))
+        page.addWidget(button("목소리 미리 듣기", lambda: self.companion.speech.speak("こんにちは！今日も一緒に、楽しく頑張ろうね！")))
+        page.addWidget(button("최근 답장 다시 듣기", self.companion.replay_latest))
+        page.addWidget(button("음성 멈추기", self.companion.speech.stop))
+        page.addWidget(label("대화의 답장을 우클릭하면 해당 답장을 다시 들을 수 있어요. 선톡도 음성 설정을 따라 읽어요. 이전 대화와 선톡은 첫 재생 시 번역을 위해 Codex를 사용해요."))
+        self.speech_status = label("")
+        page.addWidget(self.speech_status)
         page.addWidget(label("화면", "section"))
         motion = QCheckBox("펫 애니메이션 줄이기")
         motion.setChecked(self.settings.value("reduce_motion", False, type=bool))

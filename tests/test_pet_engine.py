@@ -30,8 +30,23 @@ class EngineTests(unittest.TestCase):
     @patch.object(engine, "login_status", return_value=True)
     @patch.object(engine, "codex_binary", return_value="codex")
     @patch.object(engine.subprocess, "run")
+    def test_translation_schema_only_for_enabled_chat(self, run, binary, status):
+        for context, enabled in [({}, False), ({"speech_enabled": True}, True),
+                                 ({"speech_enabled": True, "task": "diary_draft"}, False)]:
+            def fake(command, **kwargs):
+                schema = json.loads(Path(command[command.index("--output-schema") + 1]).read_text())
+                self.assertEqual("speech_ja" in schema["required"], enabled)
+                Path(command[command.index("--output-last-message") + 1]).write_text(json.dumps({"reply": "안녕", "operations": []}))
+                return subprocess.CompletedProcess(command, 0, "", "")
+            run.side_effect = fake
+            engine.request_reply(context)
+        self.assertNotIn("speech_ja", engine.SCHEMA["properties"])
+
+    @patch.object(engine, "login_status", return_value=True)
+    @patch.object(engine, "codex_binary", return_value="codex")
+    @patch.object(engine.subprocess, "run")
     def test_search_settings_and_diary_isolation(self, run, binary, status):
-        for context, enabled in [({}, True), ({"web_search_enabled": False}, False), ({"task": "diary_draft", "web_search_enabled": True}, False)]:
+        for context, enabled in [({}, True), ({"web_search_enabled": False}, False), ({"task": "diary_draft", "web_search_enabled": True}, False), ({"task": "speech_translation", "speech_enabled": True}, False)]:
             with self.subTest(context=context):
                 def fake(command, **kwargs):
                     self.assertIn('web_search="live"' if enabled else 'web_search="disabled"', command)

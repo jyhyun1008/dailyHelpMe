@@ -40,6 +40,9 @@ class Store:
             CREATE TABLE IF NOT EXISTS messages (
                 id INTEGER PRIMARY KEY, role TEXT NOT NULL, content TEXT NOT NULL,
                 created_at TEXT NOT NULL, confirmed INTEGER NOT NULL DEFAULT 0);
+            CREATE TABLE IF NOT EXISTS message_speech (
+                message_id INTEGER PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+                japanese TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS items (
                 id TEXT PRIMARY KEY, kind TEXT NOT NULL, title TEXT NOT NULL,
                 at TEXT, days TEXT NOT NULL DEFAULT '[]', time TEXT,
@@ -462,10 +465,19 @@ class Store:
                     if old["at"] != at or old["time"] != time or json.loads(old["days"]) != sorted(set(days)):
                         self.db.execute("DELETE FROM reminders WHERE key LIKE ?", (item_id + ":%",))
             message_id = self._message("assistant", result["reply"].strip(), now)
+            japanese = result.get("speech_ja")
+            if isinstance(japanese, str) and japanese.strip() and len(japanese) <= 5000:
+                self.db.execute("INSERT INTO message_speech VALUES (?,?)", (message_id, japanese.strip()))
             if link_created:
                 self.db.executemany("INSERT INTO message_items(message_id,item_id,title,kind) VALUES (?,?,?,?)",
                                     [(message_id, *item) for item in created])
         return result["reply"].strip()
+
+    def speech_message(self, message_id):
+        row = self.db.execute("SELECT m.content,s.japanese FROM messages m LEFT JOIN message_speech s ON s.message_id=m.id WHERE m.id=? AND m.role='assistant'", (message_id,)).fetchone()
+        if not row:
+            raise ValueError("다시 들을 답장을 찾지 못했어요.")
+        return (row["japanese"], True) if row["japanese"] else (row["content"], False)
 
     def reminders(self, now=None):
         """Durably save reminder and message in the same transaction, including across restarts."""

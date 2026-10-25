@@ -112,6 +112,12 @@ class MobileTests(unittest.TestCase):
         self.assertEqual(empty["messages"], [])
         self.assertFalse(empty["hasMoreMessages"])
 
+    def test_mobile_chat_marks_message_source(self):
+        self.pair()
+        with patch.object(self.controller, "send_text", return_value=True) as send:
+            self.assertEqual(self.request("/api/chat", {"text": "안녕"})[0], 202)
+            send.assert_called_once_with("안녕", source="mobile")
+
     def test_custom_media_auth_upload_archive_and_sticker_without_ai(self):
         from test_pet_media import sample_png
         image = base64.b64encode(sample_png()).decode()
