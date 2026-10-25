@@ -57,10 +57,10 @@ class MessageDelegate(QStyledItemDelegate):
     def rich(self, width, message):
         owner = self.parent()
         color = foreground() if message["role"] == "user" else "#604653"
-        key = (width, message["content"], color)
+        key = (width, message["content"], color, message["role"])
         if key not in owner.rich_cache:
             if len(owner.rich_cache)>200: owner.rich_cache.clear()
-            owner.rich_cache[key] = rich_layout(display_text(message), width, font(14), color, owner.media_assets)
+            owner.rich_cache[key] = rich_layout(display_text(message), width, font(14), color, owner.media_assets, emphasis=message["role"] == "assistant")
         return owner.rich_cache[key]
 
     def layout_for(self, width, message):
@@ -70,7 +70,7 @@ class MessageDelegate(QStyledItemDelegate):
         bounds = metrics.boundingRect(QRect(0, 0, max_text_width, 100000), Qt.TextFlag.TextWordWrap, text)
         if message.get("sticker"):
             return 146, 146, 32 if message.get("date_label") else 0, 0
-        if TOKEN.search(text):
+        if message["role"] == "assistant" or TOKEN.search(text):
             _, rich_width, rich_height, _ = self.rich(max_text_width,message)
             return int(rich_width)+26, int(rich_height)+20, 32 if message.get("date_label") else 0, 18 if message.get("show_author") else 0
         bubble_width = min(max_text_width + 26, max(46, bounds.width() + 26))
@@ -120,7 +120,7 @@ class MessageDelegate(QStyledItemDelegate):
             owner = self.parent()
             owner.media_hits.append((rect, (message["id"], "sticker"), message["sticker"]["name"]))
             draw_artwork(painter,rect,owner.media_pixmaps.get(asset_id,QPixmap()),owner.media_scales.get((message["id"],"sticker"),1.0))
-        elif TOKEN.search(display_text(message)):
+        elif message["role"] == "assistant" or TOKEN.search(display_text(message)):
             doc, _, _, boxes = self.rich(max(80,int(area.width()*.78)-26),message)
             painter.save();painter.translate(x+13,y+10);doc.drawContents(painter);painter.restore()
             owner = self.parent()

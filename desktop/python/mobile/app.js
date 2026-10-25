@@ -7,11 +7,24 @@ function appendMessageText(bubble,message) {
   for(const match of text.matchAll(pattern)){
     let url;try{url=new URL(match[2]);}catch{continue;}
     if(!['http:','https:'].includes(url.protocol))continue;
-    bubble.append(document.createTextNode(text.slice(start,match.index)));
-    const link=node('a',match[1]);link.href=url.href;link.target='_blank';link.rel='noopener noreferrer';bubble.append(link);start=match.index+match[0].length;
+    appendEmphasis(bubble,text.slice(start,match.index));
+    const link=node('a');appendEmphasis(link,match[1]);link.href=url.href;link.target='_blank';link.rel='noopener noreferrer';bubble.append(link);start=match.index+match[0].length;
   }
-  bubble.append(document.createTextNode(text.slice(start)));
+  appendEmphasis(bubble,text.slice(start));
 }
+function appendEmphasis(parent,text) {
+  const pattern=/(?<!\*)(\*{1,3})(?!\*)(?=\S)([^\n]*?\S)(?<!\*)\1(?!\*)/g;
+  let start=0;
+  for(const match of text.matchAll(pattern)){
+    parent.append(document.createTextNode(text.slice(start,match.index)));
+    const element=document.createElement(match[1].length===1?'em':'strong');
+    if(match[1].length===3){const italic=document.createElement('em');appendEmphasis(italic,match[2]);element.append(italic);}
+    else appendEmphasis(element,match[2]);
+    parent.append(element);start=match.index+match[0].length;
+  }
+  parent.append(document.createTextNode(text.slice(start)));
+}
+
 'use strict';
 const $ = id => document.getElementById(id);
 const dayNames = [...'일월화수목금토'];

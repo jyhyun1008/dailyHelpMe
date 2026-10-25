@@ -301,7 +301,7 @@ class MobileTests(unittest.TestCase):
         self.assertEqual(self.request("/api/state")[0], 401)
 
     def test_static_assets_manifest_and_worker(self):
-        for path in ("/", "/app.js", "/style.css", "/sw.js", "/font.woff2", "/manifest.webmanifest", "/manifest-en.webmanifest", "/icon.png", "/icon-512.png", "/icon-maskable-512.png", "/apple-touch-icon.png", "/favicon.png"):
+        for path in ("/", "/app.js", "/style.css", "/sw.js", "/font.woff2", "/font-mulmaru.woff2", "/manifest.webmanifest", "/manifest-en.webmanifest", "/icon.png", "/icon-512.png", "/icon-maskable-512.png", "/apple-touch-icon.png", "/favicon.png"):
             status, headers, body = self.request(path)
             self.assertEqual(status, 200, path)
             self.assertTrue(body)

@@ -84,6 +84,7 @@ def make_handler(rpc, asset_root=ROOT):
                      "/manifest.webmanifest": (asset_root / "mobile/manifest.webmanifest", "application/manifest+json"),
                      "/manifest-en.webmanifest": (asset_root / "mobile/manifest-en.webmanifest", "application/manifest+json"),
                      "/font.woff2": ((asset_root / "desktop/python/assets/fonts/ThinMulmaru.woff2" if hasattr(sys, "_MEIPASS") else asset_root / "assets/fonts/ThinMulmaru.woff2"), "font/woff2"),
+                     "/font-mulmaru.woff2": ((asset_root / "desktop/python/assets/fonts/Mulmaru.woff2" if hasattr(sys, "_MEIPASS") else asset_root / "assets/fonts/Mulmaru.woff2"), "font/woff2"),
                      "/icon.png": (asset_root / "mobile/icon.png", "image/png"),
                      "/icon-512.png": (asset_root / "mobile/icon-512.png", "image/png"),
                      "/icon-maskable-512.png": (asset_root / "mobile/icon-maskable-512.png", "image/png"),

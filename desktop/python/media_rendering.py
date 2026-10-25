@@ -1,17 +1,21 @@
 """Lay out inline artwork as text objects; animate artwork without moving text."""
 from html import escape
+from message_formatting import emphasis_html
+from typography import EMPHASIS_STYLESHEET
 from PySide6.QtCore import QPointF, QRectF, Qt, QUrl
 from PySide6.QtGui import QImage, QTextDocument, QTextOption
 from chat_media import TOKEN
 
 
-def rich_layout(text, max_width, text_font, color, assets):
+def rich_layout(text, max_width, text_font, color, assets, emphasis=False):
     document = QTextDocument()
     document.setDocumentMargin(0)
     document.setDefaultFont(text_font)
+    document.setDefaultStyleSheet(EMPHASIS_STYLESHEET)
     option = QTextOption()
     option.setWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
     document.setDefaultTextOption(option)
+    render = emphasis_html if emphasis else escape
     parts, images, start = [], [], 0
     blank = QImage(26,26,QImage.Format.Format_ARGB32)
     blank.fill(Qt.GlobalColor.transparent)
@@ -20,13 +24,13 @@ def rich_layout(text, max_width, text_font, color, assets):
         asset = assets.get(asset_id)
         if not asset or asset['kind'] != 'emoji':
             continue
-        parts.append(escape(text[start:match.start()]).replace('\n','<br>'))
+        parts.append(render(text[start:match.start()]).replace('\n','<br>'))
         key = 'emoji:' + str(len(images))
         document.addResource(QTextDocument.ResourceType.ImageResource,QUrl(key),blank)
         parts.append(f'<img src="{key}" width="26" height="26">')
         images.append((asset_id, asset['name']))
         start = match.end()
-    parts.append(escape(text[start:]).replace('\n','<br>'))
+    parts.append(render(text[start:]).replace('\n','<br>'))
     document.setHtml('<span style="color:'+color+'">'+''.join(parts)+'</span>')
     document.setTextWidth(max_width)
     width = min(max_width,max(20,document.idealWidth()))

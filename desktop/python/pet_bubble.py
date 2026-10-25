@@ -1,5 +1,7 @@
 """Content-sized pet balloon; long messages remain selectable and scrollable."""
 import math
+from message_formatting import emphasis_html
+from typography import EMPHASIS_STYLESHEET
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFontMetrics, QTextOption
 from PySide6.QtWidgets import QTextBrowser
@@ -17,6 +19,7 @@ class PetBubble(QTextBrowser):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.document().setDocumentMargin(0)
+        self.document().setDefaultStyleSheet(EMPHASIS_STYLESHEET)
         option = self.document().defaultTextOption()
         option.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         option.setWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
@@ -27,7 +30,7 @@ class PetBubble(QTextBrowser):
     def apply_theme(self):
         self._set_style()
         if self.toPlainText():
-            self.setText(self.toPlainText())
+            self.setText(self._raw_text)
 
     def _set_style(self):
         # A visible scrollbar occupies 4px on the right; reserve the same on the left.
@@ -40,12 +43,13 @@ class PetBubble(QTextBrowser):
         return self.toPlainText()
 
     def setText(self, text):
+        self._raw_text = text
         self._scrolling = False
         self._x_shift = self._y_shift = 0
         self._set_style()
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.document().setDefaultFont(self.font())
-        self.setPlainText(text)
+        self.setHtml(emphasis_html(text).replace("\n", "<br>"))
         # Measure the new document, not the old viewport width. Measuring before
         # resizing previously counted stale wraps and left blank space below.
         self.document().setTextWidth(-1)
@@ -62,7 +66,7 @@ class PetBubble(QTextBrowser):
             # ThinMulmaru has extra line leading below the visible glyphs.
             self._y_shift = min(5, max(0, math.ceil((first_line.height()-first_line.ascent()-first_line.descent())/2)))
         if not self._scrolling and self.document().blockCount() == 1 and self.document().begin().layout().lineCount() == 1:
-            ink = QFontMetrics(self.font()).tightBoundingRect(text)
+            ink = QFontMetrics(self.font()).tightBoundingRect(self.toPlainText())
             self._x_shift = min(5, max(-5, math.ceil((natural_width-ink.width())/2-ink.left())))
         self._set_style()
         self.setGeometry((320-width)//2, 102-min(94, height), width, min(94, height))

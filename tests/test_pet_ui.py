@@ -202,6 +202,24 @@ class UITests(unittest.TestCase):
         view.close()
         self.assertIn("이(가)", self.panel.memory_heading.text())
 
+    def test_assistant_emphasis_is_formatted_but_html_and_other_markdown_are_literal(self):
+        from media_rendering import rich_layout
+        from ui_widgets import font
+        text = '**굵게** *기울기* ***둘 다***\n# 제목\n`코드` <b>HTML</b> [링크](https://example.com)'
+        doc, _, _, _ = rich_layout(text, 300, font(14), '#604653', {}, emphasis=True)
+        self.assertEqual(doc.toPlainText(), '굵게 기울기 둘 다\n# 제목\n`코드` <b>HTML</b> [링크](https://example.com)')
+        from PySide6.QtGui import QTextCursor
+        cursor = QTextCursor(doc)
+        cursor.setPosition(0)
+        cursor.movePosition(QTextCursor.MoveOperation.NextCharacter, QTextCursor.MoveMode.KeepAnchor)
+        self.assertEqual(cursor.charFormat().fontWeight(), 500)
+        self.assertIn("Mulmaru", cursor.charFormat().fontFamilies())
+        cursor.setPosition(3)
+        cursor.movePosition(QTextCursor.MoveOperation.NextCharacter, QTextCursor.MoveMode.KeepAnchor)
+        self.assertTrue(cursor.charFormat().fontItalic())
+        plain, _, _, _ = rich_layout(text, 300, font(14), '#604653', {})
+        self.assertEqual(plain.toPlainText(), text)
+
     def test_week_and_diary_date_switch_export(self):
         self.add(kind="routine", title="반복 산책", days=[0, 2, 6], time="09:30")
         self.panel.calendar.setSelectedDate(QDate(2027, 1, 1))
